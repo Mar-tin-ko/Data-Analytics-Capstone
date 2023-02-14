@@ -1,0 +1,628 @@
+---
+title: "Google Data Analytics Certificate on Coursera: Capstone Project"
+output: html_document
+date: "2023-01-26"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Case Study: How Can a Wellness Technology Company Play It Smart?
+<br>
+
+### Scenario:
+You are a junior data analyst working on the marketing analyst team at Bellabeat, a high-tech manufacturer of health-focused
+products for women. Bellabeat is a successful small company, but they have the potential to become a larger player in theglobal smart device market. The cofounder and Chief Creative Officer of Bellabeat, believes that analyzing smart device fitness data could help unlock new growth opportunities for the company. 
+
+The product portfolio of Bellabeat include:
+
+* Bellabeat smart application: provides users with health data related to their activity, sleep, stress and mindfulness habits
+* Spring: water bottle that tracks daily water intake using smart technology 
+* Leaf: classic wellness tracker (bracelet, necklace or clip) of user activity, sleep, and stress level
+* Time: stylish wellness watch tracking user activity, sleep, and stress
+
+You have been asked to focus on one of Bellabeat’s products and analyze smart device data to gain insight into how consumers are using their smart devices. The insights you discover will then help guide marketing strategy for the company. You will present your analysis to the Bellabeat executive team along with your high-level recommendations for Bellabeat’s marketing strategy.
+
+<br>
+
+### Stakeholders:
+* Bellabeat’s cofounders (Chief Creative Officer and Chief Technical Officer)
+* Bellabeat marketing analytics team
+
+<br>
+
+### Main Deliverables:
+1. Summary of the business task
+2. Description of data sources
+3. Documentation of data cleaning & manipulation
+4. Summary of analysis
+5. Visualizations and key findings
+6. Recommendations based on the analysis
+
+<br>
+
+### 1. ASK phase:
+
+##### Business problem:
+* What behavioral habits have the female users of the smart devices?
+* How can the trends be applied to the Bellabeat customers?
+
+<br>
+
+##### Business tasks:
+
+1. analyze smart device usage data in order to gain insight into how consumers use non-Bellabeat smart devices 
+2. select one Bellabeat product to apply these insights to 
+3. recommend adaptations to the Bellabeat marketing strategy based on the key findings of the analysis
+
+<br>
+
+### 2. PREPARE phase:
+
+##### Data Source:
+* Kaggle data set ["FitBit Fitness Tracker Data"](https://www.kaggle.com/datasets/arashnic/fitbit)
+
+  + made available by Mobius 
+  + licenced as CC0 Public Domain
+  + data as of april - may 2016, last update 2021
+  + organized in 18 csv files in wide format (ca 320 MB)
+  + contains personal fitness tracker data from around thirty fitbit female users (daily activity, steps, heart rate, sleep time and calories)
+
+<br>
+
+Load libraries: 
+```{r loading libraries}
+
+library(tidyverse)
+library(ggplot2)
+library(formattable)
+library(ggpubr)
+library(lubridate)
+
+```
+<br>
+
+Count the available csv files, list their names and collect their paths:
+```{r data files}
+
+data_folder <- "C:/Users/Martin/Google Drive/00_Cloud/06_04_Bildungskarenz/Google Data Analytics Professional Certificate/08_Capstone/FitBit Fitness Tracker Data"
+file_paths <-  list.files(data_folder, pattern = ".", full.names = TRUE)
+file_names <-  list.files(data_folder, pattern = ".")
+file_nr <- length(file_paths)
+
+file_nr
+file_names
+
+```
+<br>
+
+Checking the first 6 rows of all csv files to get overview of the available data (not printed here due to length constraints of this document):
+```{r examine files, echo=TRUE, results=FALSE}
+
+#count_nr <- 1
+#for (x in file_paths) {
+#  print(paste("<<<<< CSV file", count_nr, " >>>>>"))
+#  result <- head(read_csv(x))
+#  print(result)
+#  count_nr <- count_nr + 1
+#}
+
+```
+Based on the data completeness, relevance and representativeness, the most comprehensive data sets are considered to be the following csv files:
+
+* "dailyActivity_merged.csv" (the main csv file), 
+* "hourlyCalories_merged.csv" and
+* "sleepDay_merged.csv"
+which is why they are focused on in the further steps of this analysis.
+
+<br>
+
+##### Data Storage:
+The data used for the analysis is stored on GitHub repository and locally.
+
+<br>
+
+##### Data Limitations (check of the ROCCC* principles):
+* small sample size (only 33 users => insufficiently representative and insufficiently reliable)
+* data is outdated (from 2016 => not current)
+* data collected from third party => not original source
+* separate csv files include parts of the same information => only partially comprehensive
+
+###### \*ROCCC = Reliable, Original, Comprehensive, Current, Cited
+
+<br>
+
+### 3. PROCESS phase:
+Firstly, the basic summary of the main csv file is examined:
+```{r examine file}
+
+x <- file_paths[1]
+csv_table <- read_csv(x)
+head(csv_table)
+colnames(csv_table)
+
+```
+There are in total 15 variables (columns) in the main csv file. We can observe that the variables are of data type double in all cases except of the variable "ActivityDate" which is of character type.
+
+<br>
+
+Count unique values in each column:
+```{r data overview 2}
+
+rapply(csv_table, function(x) length(unique(x))) 
+
+```
+There are in total 33 different female users in the data that submitted their data from 31 different days corresponding to time period between the 12th of April 2016 and the 9th of May 2016.
+
+<br>
+
+The data integrity was validated for the following features:
+
+* missing values
+* duplicate rows
+* invalid values (e.g. n/a)
+* data type consistency
+* data correctness
+
+<br>
+Count total missing values of the data frame and the number of missing values per column: 
+```{r data validation 1}
+
+sum(is.na(csv_table))
+sapply(csv_table, function(x) sum(is.na(x)))
+
+```
+The data show no missing values and passes the completenes check.
+
+<br>
+
+Show duplicate rows:
+```{r data validation 3}
+
+logical_vector <- duplicated(csv_table[, 1:2])
+csv_table[logical_vector, ]
+
+```
+There are no duplicate rows in the data frame.
+
+<br>
+
+The variable "TotalDistance" should be sum of "VeryActiveDistance", "LightActiveDistance", "ModeratelyActiveDistance" and "SedentaryActiveDistance". This is checked by copying the data frame into a testing data frame in which a new sum column is created and compared with the "TotalDistance" column. The sum check of all observations (records) of this test column (named as "distance_delta") should return zero.
+
+```{r}
+
+final_df <- mutate(csv_table, distance_delta = TotalDistance - VeryActiveDistance - LightActiveDistance - ModeratelyActiveDistance - SedentaryActiveDistance)
+colnames(final_df)
+sum(final_df$distance_delta)
+
+
+```
+
+<br>
+
+The sum check returns value other than zero, meaning some observations are not correct. The following code chunk displays the total number of failed records, the percentage of failed observations (from all observations) and the summary of the test column:
+```{r}
+
+failed_check <- filter(final_df, final_df$distance_delta != 0)
+nrow(failed_check)
+inconsistency_ratio <- nrow(failed_check) / nrow(csv_table)
+percent(inconsistency_ratio)
+summary(final_df$distance_delta)
+
+```
+
+<br>
+
+Based on the above results a substantial proportion of the observations are showing signs of incorrectness but with very low delta in the most cases. To account for the proportionality principle, the observations with delta higher than 10% of its correct "TotalDistance" value are counted and listed:
+
+```{r}
+
+failed_check <- filter(final_df, final_df$distance_delta > final_df$TotalDistance * 0.1 )
+nrow(failed_check)
+inconsistency_ratio <- nrow(failed_check) / nrow(csv_table)
+percent(inconsistency_ratio)
+failed_check %>% select(Id, ActivityDate, TotalSteps, TotalDistance, distance_delta)
+
+```
+By accepting the discrepancy threshold of less or equal to 10 %, the inconsistency ratio of data becomes negligible and acceptable.
+
+<br>
+
+The above listed several inaccurate observations show significant deviations and will not be considered in the analysis. They are eliminated from the data set. 
+```{r}
+
+final_df <- filter(final_df, final_df$distance_delta <= final_df$TotalDistance * 0.1)
+nrow(final_df)
+ncol(final_df)
+nrow(final_df) == nrow(csv_table) - nrow(failed_check)
+
+```
+The check of the updated number of observation is performed and passed. Now, after the data cleaning process has been completed, the data is considered ready for the analysis. The remaining csv files selected for the analysis underwent analogous data cleaning process. 
+
+<br>
+
+
+### 4. ANALYZE phase:
+#### 4.1. "dailyActivity_merged.csv"
+Showing basic summary statistics of all columns of the main csv file and counting the columns:
+```{r columns}
+
+summary(final_df)
+ncol(final_df)
+
+```
+
+The key summary statistics show that:
+
+* The average number of steps per day is 7641, the maximum observation is 36019 steps. 
+* The average total distance per day is 5487, the maximum 28030.
+* 25% of the users burn less than 1825 calories a day. 75% of the users burn less than 2784 calories a day. 
+* The average time performing sedentary activity is around 5 time higher than the average time performing light activity. 
+* The average time performing light activity is around 5 time higher than the average time performing very active activity.
+
+<br>
+
+The following variables are not relevant for further analysis and thus will not be considered further:
+
+* "SedentaryActiveDistance" (mainly zero values, no relevance)
+* "TrackerDistance" (is identical with "TotalDistance")
+* "LoggedActivitiesDistance" (mainly zero values, no relevance)
+* "distance_delta" (purpose fulfilled, no more needed).
+
+<br>
+
+Filtering out the unnecesary variables and showing the remaining variables of the data frame prepared to be analyzed:
+```{r filtering out}
+
+analysis_df <- final_df %>% select(-SedentaryActiveDistance)
+analysis_df <- analysis_df %>% select(-TrackerDistance)
+analysis_df <- analysis_df %>% select(-LoggedActivitiesDistance)
+analysis_df <- analysis_df %>% select(-distance_delta)
+ncol(analysis_df )
+colnames(analysis_df)
+
+```
+
+
+<br>
+
+
+What is the distribution of daily total distances of the sample (ungrouped) and the corresponding quantiles?
+```{r}
+
+ggplot(data = analysis_df) + geom_histogram(mapping = aes(x = TotalDistance)) +  xlim(0, 30) 
+
+quantile(analysis_df$TotalDistance, probs = seq(0, 1, 1/4))
+
+
+```
+
+75% of daily distances are less than 7.7 km.
+
+<br>
+
+How is the monthly distance per user distributed?
+```{r distance plot 2}
+
+users <- analysis_df %>%
+  group_by(Id) %>%
+  summarise(sum_total_distance = sum(TotalDistance)/2)
+
+nrow(users)
+arrange(users,desc(sum_total_distance))
+#View(users)
+ggplot(data = users) + geom_histogram(mapping = aes(x = sum_total_distance)) 
+
+```
+
+The users achieving a average distance of more than 125 km per month are very rare.
+
+<br>
+
+What is the average daily distance and how is it structured?
+```{r distance plot 3}
+
+round(mean(analysis_df$TotalDistance),1)
+
+users_2 <- analysis_df %>%
+  summarise(light_activity = mean(LightActiveDistance), high_activity = mean(VeryActiveDistance), 
+            moderate_activity=mean(ModeratelyActiveDistance))
+users_2
+
+transposed <- users_2 %>%
+  rownames_to_column() %>%
+  pivot_longer(, cols = -rowname) %>%
+  pivot_wider(, names_from = rowname) %>%
+  rename("ActivityType" = 1) %>%
+  rename("AverageDailyDistance" = 2) %>%
+  as.data.frame()
+
+transposed <- mutate(transposed, sex = "female")
+
+ggplot(transposed, aes(x = sex, y = AverageDailyDistance, fill = ActivityType)) + 
+  geom_col(width = 0.3) + geom_text(aes(label = round(AverageDailyDistance, 1)), position = position_stack(vjust = 0.5)) +
+          xlab(NULL)
+
+```
+
+The biggest portion of the average daily distance is achieved by the light activity. The moderate activity refers to the smallest portion. This could be explained by the hypothesis that the users either don't do a sport activity (and perform a light activity) or they train (and perform a high activity) leaving not much space for the moderate activities. The sedentary activity data was not considered because it was negligibly small in the distance data category.
+
+<br>
+
+What is the relationship between the Total Distance and the Calories?
+```{r}
+
+total <- ggplot(analysis_df, aes(x=TotalDistance, y=Calories)) + geom_point() + geom_smooth(method=lm, level=0.99) +  xlim(0, 30) +   
+  ylim(0, 5000)
+total
+
+cor(analysis_df$TotalDistance, analysis_df$Calories, method = c("pearson"))
+
+```
+
+As expected, there is a clear positive correlation between the Total Distance and the Calories.
+
+<br>
+
+How is the average daily time (in minutes) structured on average?
+```{r}
+
+users_3 <- analysis_df %>%
+  summarise(sedentary_activity = mean(SedentaryMinutes), light_activity = mean(LightlyActiveMinutes), 
+            high_activity = mean(VeryActiveMinutes), moderate_activity= mean(FairlyActiveMinutes))
+users_3
+
+transposed_2 <- users_3 %>%
+  rownames_to_column() %>%
+  pivot_longer(, cols = -rowname) %>%
+  pivot_wider(, names_from = rowname) %>%
+  rename("ActivityType" = 1) %>%
+  rename("AverageDailyTime" = 2) %>%
+  as.data.frame()
+
+transposed_2 <- mutate(transposed_2, sex = "female")
+
+ggplot(transposed_2, aes(x = sex, y = AverageDailyTime, fill = ActivityType)) +
+  geom_col(width = 0.3) + geom_text(aes(label = round(AverageDailyTime, 1)), position = position_stack(vjust = 0.5)) +
+            xlab(NULL) 
+
+```
+
+The time performing a high activity and moderate activity is very small. The sample users devote the biggest daily time portion to the sedentary activities (around 81 %) implying that they spend most of the day without physical activity being attached to one place (or limited number of places). 
+
+<br>
+
+#### 4.2. “hourlyCalories_merged.csv”
+This csv file provides insights into the calories consumption of the users based on their activity.
+
+<br>
+
+What time of the day do the sample users burn the most calories on average?
+```{r}
+
+y <- file_paths[6]
+csv_calories <- read_csv(y)
+head(csv_calories)
+
+csv_calories <- mutate(csv_calories, ActivityHourFormatted = hour(as_datetime(as.POSIXct(csv_calories$ActivityHour, 
+                                                                                         format = "%m/%d/%Y %I:%M:%S %p"))))
+
+grouped <- csv_calories %>%  
+  group_by(ActivityHourFormatted)  %>%
+  summarise(mean_calories = mean(Calories))
+#nrow(grouped)
+
+ggplot(grouped, aes(x=ActivityHourFormatted, y=mean_calories)) + geom_point( ) 
+
+```
+
+The highest consumption of calories is observed between 17 and 19 o'clock ("calories peak time"). The second highest time period is between 12 and 14 o'clock. This implies that the user's window for free time corresponds to these time slots.
+
+<br>
+
+#### 4.3. “sleepDay_merged.csv”
+This csv file provides insights into the sleep habbits of the users.
+
+<br>
+
+Which nights of the week do the users use the smart application for tracking their sleep patterns the most?
+```{r}
+
+Sys.setlocale("LC_TIME", "English") # Converts the weekdays into English
+
+z <- file_paths[17]
+csv_sleep <- read_csv(z)
+head(csv_sleep)
+
+sleep <- mutate(csv_sleep, Weekday = weekdays(as.Date(as.POSIXct(csv_sleep$SleepDay, format = "%m/%d/%Y %I:%M:%S %p"))))
+
+sleep$Weekday <- factor(sleep$Weekday, levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))
+
+ggplot(data = sleep) + geom_bar(mapping = aes(x = Weekday)) 
+
+```
+
+The first three days of the week show the highest frequency of data points implying that the users prefer to use the smart tracker mostly in the first half of the week. On the other hand, on Sundays the users utilize the application the least.
+
+<br>
+
+How many hours do the users sleep on average?
+```{r}
+
+round(mean(sleep$TotalMinutesAsleep) / 60, 2)
+
+```
+
+<br>
+
+### 5. SHARE phase:
+
+This section consists of the main visualizations enlightening the key findings and the trends in the data based on the analysis of all selected csv files. 
+
+<br>
+
+75% of daily distances are less than 7.7 km meaning that the average user doesn't reach the recommended 10 km mark a day. This trend depicts a clear space for improvement in the life style of the users in order to have a more healthy and balanced way of living. 
+```{r}
+
+ggplot(data = analysis_df) + geom_histogram(mapping = aes(x = TotalDistance)) + 
+  labs(x="Total Daily Distance", y="Frequency") +  xlim(0, 30) 
+
+```
+
+<br>
+
+There is a clear positive correlation (0.64) between the Total Distance and the Calories which should be used as motivating factor for the users to achieve longer distances, especially those aiming to decrease weight.
+```{r}
+
+total <- ggplot(analysis_df, aes(x=TotalDistance, y=Calories)) + geom_point() + geom_smooth(method=lm, level=0.99, 
+                                                                                            color = 'lightskyblue3') + 
+  xlim(0, 30) + ylim(0, 5000) + stat_regline_equation(label.x=23, label.y=4000) + labs(x="Total Daily Distance", y="Calories")
+total
+
+```
+
+<br>
+
+The biggest portion of the average daily distance is achieved by the light activity (almost 62 %). The sedentary activity data was not considered because it was negligibly small in the distance data category. The low popularity of the moderate activities could be explained by the hypothesis that the users prefer to do rather a higly active physical activities (e.g. sport) than a moderate activity (e.g. easy jogging, swimming leisurely or brisk walk).  
+The time performing a high activity and moderate activity is very small. The sample users devote the biggest daily time portion to the sedentary activities (around 81 %) implying that they spend most of the day without physical activity being attached to one place (or to a limited number of places).
+```{r}
+
+users_2 <- analysis_df %>%
+  summarise(light_activity = mean(LightActiveDistance) , high_activity = mean(VeryActiveDistance), 
+            moderate_activity= mean(ModeratelyActiveDistance), sedentary_activity = 0)
+
+transposed <- users_2 %>%
+  rownames_to_column() %>%
+  pivot_longer(, cols = -rowname) %>%
+  pivot_wider(, names_from = rowname) %>%
+  rename("ActivityType" = 1) %>%
+  rename("Average" = 2) %>%
+  as.data.frame()
+
+total_distance <- sum(transposed$Average)
+
+transposed <- mutate(transposed, MyDataInfo = "Average Daily Distance")
+transposed <- mutate(transposed, Percentage = percent(Average / total_distance, 1))
+
+users_3 <- analysis_df %>%
+  summarise(sedentary_activity = mean(SedentaryMinutes), light_activity = mean(LightlyActiveMinutes), 
+            high_activity = mean(VeryActiveMinutes), moderate_activity= mean(FairlyActiveMinutes))
+
+transposed_2 <- users_3 %>%
+  rownames_to_column() %>%
+  pivot_longer(, cols = -rowname) %>%
+  pivot_wider(, names_from = rowname) %>%
+  rename("ActivityType" = 1) %>%
+  rename("Average" = 2) %>%
+  as.data.frame()
+
+total_time <- sum(transposed_2$Average)
+
+transposed_2 <- mutate(transposed_2, MyDataInfo = "Average Daily Time")
+transposed_2 <- mutate(transposed_2, Percentage = percent(Average / total_time, 1))
+
+transposed_combi <- transposed %>% add_row(ActivityType = transposed_2$ActivityType, Average = transposed_2$Average,
+                                           MyDataInfo = transposed_2$MyDataInfo, Percentage = transposed_2$Percentage )
+
+p <- ggplot(transposed_combi, aes(x = MyDataInfo, y = Percentage, fill= ActivityType) ) +
+  geom_col(width = 0.3 ) + geom_text(size=3, aes(label = Percentage), position = position_stack(vjust = 0.5)) + 
+  xlab(NULL) +  scale_fill_manual(values = c("high_activity" = "lightskyblue",
+                                             "light_activity" = "lightskyblue1",
+                                             "moderate_activity" = "lightskyblue2",
+                                             "sedentary_activity" = "lightskyblue3")) + labs(y="Percentage")
+
+p + scale_y_continuous(labels = scales::percent_format(accuracy = 1))
+
+```
+
+<br>
+
+The highest consumption of calories is observed between 17 and 19 o'clock ("calories peak time"). The second highest time period is between 12 and 14 o'clock. This implies that the user's window for free time corresponds to these time slots due to their work schedule and/or other responsibilities.
+```{r}
+
+y <- file_paths[6]
+csv_calories <- read_csv(y)
+
+csv_calories <- mutate(csv_calories, ActivityHourFormatted = hour(as_datetime(as.POSIXct(csv_calories$ActivityHour, 
+                                                                                         format = "%m/%d/%Y %I:%M:%S %p"))))
+
+grouped <- csv_calories %>%  
+  group_by(ActivityHourFormatted)  %>%
+  summarise(mean_calories = mean(Calories))
+
+ggplot(grouped, aes(x=ActivityHourFormatted, y=mean_calories)) + geom_line(color="lightblue") + geom_point( ) + 
+  labs(x="Hours in a day", y="Average Calories Burnt") + scale_x_continuous(breaks=c(0:23))
+
+```
+
+<br>
+
+The first three days of the week show the highest frequency of data points implying that the users prefer to use the smart tracker mostly in the first half of the week (or during weekdays). On the other hand, on Sundays the users utilize the application the least. This could be explained by the hypothesis that the users prefer to disconnect from all their technological devices on Sundays to spend more time with their family without distractions or to do activities that doesn't make sense to track with the smart device. 
+<br>
+The average sleeping time is almost 7 hrs a day implying that the users are leading busy life style and that they would appreciate to have access to simple and short recommendations about the wellness and their habits. 
+```{r}
+
+Sys.setlocale("LC_TIME", "English") # Converts the weekdays into English
+
+z <- file_paths[17]
+csv_sleep <- read_csv(z)
+
+sleep <- mutate(csv_sleep, Weekday = weekdays(as.Date(as.POSIXct(csv_sleep$SleepDay, format = "%m/%d/%Y %I:%M:%S %p"))))
+sleep$Weekday <- factor(sleep$Weekday, levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))
+
+color_scheme <- c("lightblue", "lightblue", "lightblue", "lightblue","lightblue","grey" ,"grey")
+ggplot(data = sleep) + geom_bar(mapping = aes(x = Weekday), fill=color_scheme) + labs(y='Count of Data Points')
+
+```
+
+<br>
+
+### 6. ACT phase:
+This is the final stage of the analisis proces that answers the business tasks and offer data-driven recommendations.
+
+<br>
+
+##### Business tasks:
+
+1. analyze smart device usage data in order to gain insight into how consumers use non-Bellabeat smart devices
+
+    - The average total distance per day is 5.5 km, meaning that average sample user reaches only half of the recommended 10 km                distance per day. Moreover, the users achieving an average distance of more than 125 km per month are very rare.  
+    - The average time of sedentary activity is around 4 times higher than the average time performing the other types of activities.          Also, the highest frequency of daily total distances is observed for the shortest distance category.  
+    - The biggest portion of the average daily distance is achieved by the light activity.  
+    - The time performing a high activity and moderate activity is negligible even though there is a clear positive correlation                between the Total Distance and the Calories.   
+    - The highest consumption of calories is observed between 17 and 19 o'clock ("calories peak time"). The second highest time slot is        between 12 and 14 o'clock. 
+    - The first three days of the week show the highest frequency of data points implying that the users prefer to use the smart tracker       mostly in the first half of the week. 
+    - The average sleeping time is almost 7 hrs a day implying that the users are leading busy life style.
+    
+     <br>
+    
+2. select one Bellabeat product to apply these insights to
+
+    - The sample users are predominantly spending time by performing sedentary activities. Therefore the company should focus on               further development of the "Time" stylish smart watch which should become the flag ship in the marketing strategy.
+    
+    <br>
+    
+3. recommend adaptations to the Bellabeat marketing strategy based on the key findings of the analysis
+
+    - An application notification should be introduced to inform the user of her goal / daily performance. 
+    - A comparison with the rest of database users should be used for motivation purpuses (e.g. your performance today reached X% of           the average user of your user profile and goal).    
+    - Posting the results on the social media by the user should be simplified.
+    - A regular application notification to make a break from sedentary activity to increase the activity level should be introduced.
+    - The smart app should offer wide range of functionalities for tracking the light activities (e.g. walking, comparisons for                number of steps, daily progress, etc.) 
+    - The users should be notified by regular recomendations of healthy life style based on their user profile and preferences.
+    - The customers who don't burn increased amount of calories during the "calories peak time" of the day should be advertised training       opportunities from the sport providers cooperating with Bellabeat. 
+    - The notifications should be sent during the weekdays when the usage of the tracker application by the users is the highest.
+
+<br>
+
+##### Next steps:
+
+* to adapt the Bellabeat marketing strategy and to prioritize the "Time" smart watch product in the new marketing campaign
+* to coordinate with IT department the extension of the funcionalities of the Bellabeat smart application
+* to communicate key product changes with the sales department
+* to collect internal data from the Bellabeat smart application in order to track the effectiveness of the new marketing strategy 
+
+<br>
+
+<br>
